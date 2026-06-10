@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0, minimal-ui, shrink-to-fit=no, viewport-fit=cover">
+	<meta name="apple-mobile-web-app-capable" content="yes">
+	<meta name="theme-color" content="#ffd2e6">
+	<title>Candy Guard</title>
+	<style type='text/css'>
+	html, body {
+		margin: 0; padding: 0;
+		width: 100%; height: 100%;
+		overflow: hidden;
+		background: #ffe0f0;
+		position: fixed;
+		-webkit-tap-highlight-color: rgba(0,0,0,0);
+		-webkit-touch-callout: none;
+		-webkit-user-select: none; -moz-user-select: none; -ms-user-select: none; user-select: none;
+	}
+	#app-container {
+		position: fixed; inset: 0;
+		display: flex; align-items: center; justify-content: center;
+		background: linear-gradient(135deg, #ffe0f0 0%, #ffeede 50%, #fff6d6 100%);
+	}
+	#canvas-container { position: relative; line-height: 0; }
+	#canvas { display: block; outline: none; border: 0; box-shadow: 0 10px 40px rgba(190,80,130,0.25); border-radius: 6px; }
+	canvas:focus, canvas:active { outline: none; border: 0; }
+	#loader {
+		position: fixed; inset: 0; display: flex; flex-direction: column;
+		align-items: center; justify-content: center; gap: 18px;
+		font-family: sans-serif; color: #d24a86; z-index: 10;
+		transition: opacity .4s ease;
+		pointer-events: none; /* CRITICAL: never intercept clicks meant for the game canvas */
+		background: linear-gradient(135deg, #ffe0f0 0%, #ffeede 50%, #fff6d6 100%);
+	}
+	#loader h1 { margin: 0; font-size: 30px; letter-spacing: 1px; text-shadow: 0 2px 0 #fff; }
+	#bar-bg { width: 200px; height: 12px; background: #ffd0e2; border-radius: 8px; overflow: hidden; box-shadow: inset 0 1px 3px rgba(0,0,0,.12); }
+	#bar { width: 0%; height: 100%; background: linear-gradient(90deg,#ff8fb0,#ff5c86); border-radius: 8px; transition: width .2s ease; }
+	#fs-btn {
+		position: fixed; right: 10px; bottom: 10px; z-index: 11;
+		width: 38px; height: 38px; border: none; border-radius: 10px; cursor: pointer;
+		background: rgba(255,255,255,.65); color: #d24a86; font-size: 16px; line-height: 38px;
+	}
+	#warn { display: none; margin: 3em; font-family: sans-serif; color: #555; }
+	</style>
+</head>
+<body>
+	<div id="app-container">
+		<div id="warn">
+			<h1>WebGL not supported &#9888;</h1>
+			<p>This game needs WebGL. Visit <a href="https://get.webgl.org/">get.webgl.org</a> to learn more.</p>
+		</div>
+		<div id="canvas-container">
+			<canvas id="canvas" tabindex="1" width="720" height="1280"></canvas>
+		</div>
+	</div>
+
+	<div id="loader">
+		<h1>&#127852; Candy Guard</h1>
+		<div id="bar-bg"><div id="bar"></div></div>
+	</div>
+	<button id="fs-btn" title="Fullscreen" onclick="Module.toggleFullscreen && Module.toggleFullscreen();">&#9974;</button>
+
+	<script>
+		if (typeof globalThis === 'undefined') { window.globalThis = window; }
+
+		// Responsive fit: scale the 720x1280 canvas to the VISUAL viewport, preserving
+		// aspect, and center it with fixed positioning (robust even if the layout
+		// viewport differs from window.innerWidth).
+		function fitCanvas() {
+			var c = document.getElementById('canvas');
+			if (!c) return;
+			var W = window.innerWidth, H = window.innerHeight;
+			var s = Math.min(W / 720, H / 1280);
+			var w = Math.round(720 * s), h = Math.round(1280 * s);
+			c.style.position = 'fixed';
+			c.style.width  = w + 'px';
+			c.style.height = h + 'px';
+			c.style.left = Math.round((W - w) / 2) + 'px';
+			c.style.top  = Math.round((H - h) / 2) + 'px';
+		}
+		window.addEventListener('resize', fitCanvas);
+		window.addEventListener('orientationchange', function(){ setTimeout(fitCanvas, 60); });
+		fitCanvas();
+		// Persistent re-fit: the engine may resize the canvas backing at any time
+		// (and late on slow loads). A cheap forever-interval guarantees the canvas
+		// always fits the viewport regardless of when that happens (cheap, 1s).
+		setInterval(fitCanvas, 1000);
+
+		// Record the first user gesture. Browsers gate audio until then; this flag
+		// lets anything that cares defer sound. (Defold resumes WebAudio on gesture.)
+		window._userInteracted = false;
+		function _markGesture() { window._userInteracted = true; }
+		window.addEventListener('pointerdown', _markGesture, { once: true });
+		window.addEventListener('keydown',     _markGesture, { once: true });
+		window.addEventListener('touchstart',  _markGesture, { once: true });
+
+		// Hide the loader once the engine is up (it grows the canvas backing > 720),
+		// with a hard fallback. (Defold dmloader handles its own progress.)
+		function hideLoader() {
+			var l = document.getElementById('loader');
+			if (l && l.style.display !== 'none') { l.style.opacity = '0'; setTimeout(function(){ l.style.display = 'none'; }, 450); }
+			fitCanvas();
+		}
+		var _ldN = 0, _ldI = setInterval(function(){
+			var c = document.getElementById('canvas');
+			var M = window.Module;
+			// Hide once the engine is up OR it has grown the backing buffer. (The
+			// loader has pointer-events:none, so it never blocks input even if it
+			// lingers; the > check works on dpr=1 where the backing stays 720x1280.)
+			var ready = (M && (M.calledRun || M.runtimeInitialized))
+			         || (c && (c.width > 720 || c.height > 1280));
+			if (ready) { hideLoader(); clearInterval(_ldI); }
+			if (++_ldN > 70) { hideLoader(); clearInterval(_ldI); } // ~10.5s hard fallback
+		}, 150);
+	</script>
+	<script id='engine-loader' type='text/javascript' src="dmloader.js"></script>
+	<script id='engine-start' type='text/javascript'>
+		var warn = document.getElementById("warn");
+		if (window.location.href.startsWith("file://")) {
+			warn.innerHTML = "<h1>Run from a web server</h1><p>Open this build via http(s), not a file:// path.</p>";
+			warn.style.display = "block";
+		} else {
+			EngineLoader.load("canvas", "CandyGuard");
+		}
+	</script>
+</body>
+</html>
