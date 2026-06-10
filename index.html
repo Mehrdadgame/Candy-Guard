@@ -65,6 +65,13 @@
 	<script>
 		if (typeof globalThis === 'undefined') { window.globalThis = window; }
 
+		// ---- Rastar backend override (deploy-time knob) -------------------------
+		// Leave empty to use this page's own /rastarapi reverse proxy (works when
+		// served by tools/rastar_proxy.py or serve_nocache.py). When hosting the
+		// bundle somewhere WITHOUT that proxy, point this at a proxy you control:
+		//   window.RASTAR_API = "https://mygame.example.com/rastarapi";
+		window.RASTAR_API = "";
+
 		// Responsive fit: scale the 720x1280 canvas to the VISUAL viewport, preserving
 		// aspect, and center it with fixed positioning (robust even if the layout
 		// viewport differs from window.innerWidth).
